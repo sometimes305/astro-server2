@@ -1,4 +1,4 @@
-// public/ws.js — WebSocket 接続とメッセージ受信
+// public/ws.js — WebSocket 接続とメッセージ処理
 import { currentUser, coinsOf } from './auth.js';
 
 export function connectWS(game){
@@ -32,14 +32,25 @@ export function connectWS(game){
       game.setServerMult(msg.value); return;
     }
     if (msg.type === 'passengers' && Array.isArray(msg.list)) {
-      game.setPassengers(msg.list); return;
+      game.setPassengers && game.setPassengers(msg.list); return;
+    }
+    if (msg.type === 'chat') {
+      game.onChat && game.onChat(msg); return;
+    }
+    if (msg.type === 'eject' && typeof msg.name === 'string') {
+      game.onEject && game.onEject(msg.name); return;
     }
   });
 
-  // ゲーム側から送るためのヘルパ
+  // ゲームから送信するためのヘルパ
   window.wsSend = (obj)=>{
     if(ws.readyState === WebSocket.OPEN){
       ws.send(JSON.stringify(obj));
+    }
+  };
+  window.wsChat = (text)=>{
+    if(ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({ type:'chat', text }));
     }
   };
 }
