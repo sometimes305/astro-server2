@@ -10,13 +10,11 @@ connectWS(game);
 window.doLogout = function () {
   console.log('[logout] called');
   try {
-    // auth.js のユーザーだけを確実にクリア
-    localStorage.removeItem('astro_user'); // ← LS_KEY_USER
-    // 旧キーが残っていた場合の掃除（無くてもOK）
+    localStorage.removeItem('astro_user'); // 統一キー
+    // 念のため旧キー掃除
     localStorage.removeItem('userName');
     localStorage.removeItem('userPass');
   } finally {
-    // 履歴を残さず完全再読み込み
     location.href = location.origin + location.pathname;
   }
 };
@@ -34,13 +32,9 @@ function renderUserArea() {
 }
 renderUserArea();
 
-// 文書全体でログアウトクリックを拾う（イベント委譲）
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-action="logout"]');
-  if (btn) {
-    e.preventDefault();
-    window.doLogout();
-  }
+  if (btn) { e.preventDefault(); window.doLogout(); }
 });
 
 function openAuthModal(show) {
@@ -60,20 +54,16 @@ if (loginBtn && signupBtn) {
 }
 function doAuth(isSignup) {
   const name = $('uName')?.value.trim();
-  const pass = $('uPass')?.value; // いまは未使用（保存しない）
+  const pass = $('uPass')?.value; // 保持しないがUI要件で入力必須
   if (!name || !pass) return alert('ユーザー名とパスワードを入力してね');
 
-  // ★ auth.js の setCurrentUser を使う（これが全ての基準）
   setCurrentUser(name);
-
-  // 初回ユーザーに初期コイン（既に持ってたら何もしない）
-  if (typeof coinsOf(name) !== 'number') {
-    setCoins(name, 100);
-  }
+  // 初回は100コイン
+  if (!coinsOf(name)) setCoins(name, 100);
 
   openAuthModal(false);
   renderUserArea();
-  location.reload(); // WSに新しい名前で hello を送らせるため
+  location.reload(); // 新しい名前でWS helloを送るため
 }
 
 /* -------------------- 広告（モーダル開閉＋カウント） -------------------- */
@@ -86,7 +76,7 @@ let adTimer = null;
 
 function openAdModal() {
   if (!adModal) return;
-  if (window.renderAdSlot) window.renderAdSlot(); // ads.js（非モジュール）
+  if (window.renderAdSlot) window.renderAdSlot();
 
   adModal.style.display = 'flex';
   let left = 10;
@@ -122,7 +112,6 @@ if (adClaim) {
     closeAdModal();
   };
 }
-// 所持0の時のみ広告ボタン有効
 setInterval(() => {
   if (!watchAdBtn) return;
   const c = coinsOf(currentUser());
@@ -137,7 +126,7 @@ const histClose = $('histClose');
 function getHistory(name) {
   if (!name) return [];
   try {
-    const raw = localStorage.getItem('astro_hist'); // auth.js と同じキーから取得
+    const raw = localStorage.getItem('astro_hist');
     const map = raw ? JSON.parse(raw) : {};
     const arr = map[name] || [];
     return arr.slice(-20).reverse();

@@ -1,4 +1,4 @@
-// server.js — Expressでpublic配信 + WebSocketでゲーム進行 & 参加者同期
+// server.js — Expressでpublic配信 + WebSocket進行 + 参加者同期/チャット/脱出合図
 const http = require('http');
 const path = require('path');
 const express = require('express');
@@ -38,8 +38,12 @@ function pushPassengers() {
   const msg = JSON.stringify({ type: 'passengers', list: publicPassengers() });
   wss.clients.forEach(ws => { if (ws.readyState === ws.OPEN) ws.send(msg); });
 }
+const broadcast = (obj) => {
+  const msg = JSON.stringify(obj);
+  wss.clients.forEach(ws => { if (ws.readyState === ws.OPEN) ws.send(msg); });
+};
 
-// ----------- 倍率の確率分布（ユーザー指定） -----------
+// ----------- 倍率の確率分布（指定どおり） -----------
 const buckets = [
   { p: 0.05, min: 1.01,     max: 1.01,     mode: 'point' }, // 1.01倍
   { p: 0.05, min: 1.02,     max: 1.10,     mode: 'lin'   }, // 1.02–1.1倍
@@ -82,12 +86,6 @@ const stages = [
 ];
 const rateFor = (m)=>{ for(const s of stages){ if(m < s.t) return s.r; } return stages.at(-1).r; };
 
-// ----------- ブロードキャスト -----------
-const broadcast = (obj) => {
-  const msg = JSON.stringify(obj);
-  wss.clients.forEach(ws => { if (ws.readyState === ws.OPEN) ws.send(msg); });
-};
-
 // ----------- 接続時の処理 -----------
 wss.on('connection', (ws) => {
   const id = String(nextId++);
@@ -110,15 +108,31 @@ wss.on('connection', (ws) => {
       c.name  = String(msg.name || '？？');
       if(typeof msg.coins==='number') c.coins = msg.coins|0;
       pushPassengers();
+      return;
     }
     if(msg.type==='wallet' && typeof msg.coins==='number'){
       c.coins = msg.coins|0; pushPassengers();
+      return;
     }
     if(msg.type==='join' && typeof msg.bet==='number'){
       c.bet = msg.bet|0; c.joined = true; pushPassengers();
+      return;
     }
     if(msg.type==='cashout' && typeof msg.gain==='number'){
       c.gain = msg.gain|0; c.cashed = true; pushPassengers();
+      // 脱出アニメ合図
+      broadcast({ type: 'eject', name: c.name || '？？' });
+      return;
+    }
+    if (msg.type === 'chat' && typeof msg.text === 'string') {
+      const payload = {
+        type: 'chat',
+        name: (c?.name || '？？'),
+        text: String(msg.text).slice(0, 200),
+        ts: Date.now()
+      };
+      broadcast(payload);
+      return;
     }
   });
 
@@ -137,7 +151,6 @@ function startLobby(){
   lastLobbySec = null;
   broadcast({ type:'round', phase, lobbyMsLeft: 15000 }); // 受付開始を即通知
 }
-
 function startFlight(){
   if(phase==='flight') return; // 二重発射ガード
   phase = 'flight';
@@ -145,7 +158,6 @@ function startFlight(){
   crashAt = sampleCrash();
   broadcast({ type:'round', phase, crashAt });
 }
-
 function endCrash(){
   phase = 'crash';
   broadcast({ type:'round', phase, crashAt });
