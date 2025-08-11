@@ -1,4 +1,4 @@
-// サーバ同期版 game.js（自走しない・ロビー残り秒表示・搭乗/帰還可能）
+// サーバ同期版 game.js（上限撤廃・他ユーザー表示・カウントダウン0まで・スマホ入力修正）
 import { $, currentUser, coinsOf, setCoins, pushHistory } from './auth.js';
 
 const log = (html)=>{
@@ -11,8 +11,7 @@ export function initGame(){
   const $state=$('stateLabel'), $count=$('countdown'), $mult=$('mult');
   const $join=$('joinBtn'), $cash=$('cashoutBtn');
   const $bet=$('bet'), $betMax=$('betMax'), $lock=$('lockTip');
-  const $stage=$('stage'), $stars=$('stars'), $rocket=$('rocket');
-  const $passengers=$('passengers');
+  const $stars=$('stars'), $rocket=$('rocket');
 
   // 背景の星
   for(let i=0;i<200;i++){
@@ -24,25 +23,6 @@ export function initGame(){
     $stars.appendChild(s);
   }
 
-  // 乗客（ログインユーザーのみ表示）
-  let passengers=[];
-  function resetPassengers(){
-    const name = (currentUser() || 'あなた');
-    passengers = [{ id:'you', name, joined:false, gain:0 }];
-    renderPassengers();
-  }
-  function renderPassengers(){
-    $passengers.innerHTML = '';
-    const p = passengers[0];
-    const row=document.createElement('div'); row.className='row';
-    row.innerHTML=`<div class="ava">🧑‍🚀</div>
-      <div class="name">${p.name}</div>
-      <div>${p.joined? '●' : '-'}</div>
-      <div>${p.gain>0?'<span class="pwin">+'+p.gain.toLocaleString('ja-JP')+'</span>':''}</div>`;
-    $passengers.appendChild(row);
-    p._row = row;
-  }
-
   // 状態
   let phase='idle', mult=1.00, crashAt=1.5, joined=false, betAmt=0, youCashed=false;
   let loopId=0;
@@ -52,6 +32,7 @@ export function initGame(){
   function updateWalletBars(){
     const u=currentUser(); const c=coinsOf(u);
     $bal.textContent=$wallet.textContent=c.toLocaleString('ja-JP');
+    window.wsSend && window.wsSend({ type:'wallet', coins:c });
   }
   function updateUI(){
     $mult.textContent = mult.toFixed(2)+'×';
@@ -67,13 +48,12 @@ export function initGame(){
     cancelAnimationFrame(loopId); loopId=0;
     mult=1.00; youCashed=false; joined=false; betAmt=0;
     $bet.disabled=false; $cash.disabled=true; $join.disabled=true;
-    $rocket.classList.remove('explode'); setPhase('idle'); updateUI(); resetPassengers();
+    $rocket.classList.remove('explode'); setPhase('idle'); updateUI();
   }
 
   function joinNow(){
     if (phase !== 'lobby' || joined) return;
-    let v = Math.max(1, Math.floor($bet.value||0));
-    v = Math.min(10000, v);
+    let v = parseSafeBet($bet.value);
     const u = currentUser(); let c = coinsOf(u);
     if (v > c) v = c;
     if (v <= 0) return;
@@ -84,6 +64,7 @@ export function initGame(){
     $join.disabled = true;
     $bet.disabled  = true;
     log(`搭乗！ ベット <b>${betAmt.toLocaleString('ja-JP')}</b> 星粒`);
+    window.wsSend && window.wsSend({ type:'join', bet: betAmt });
   }
 
   function cashout(){
@@ -93,11 +74,11 @@ export function initGame(){
     setCoins(u, coinsOf(u)+gain); youCashed=true;
     log(`帰還成功！ <b style="color:var(--good)">${mult.toFixed(2)}×</b> で <b>+${gain.toLocaleString('ja-JP')}</b> 星粒。<span class="tag ok">WIN</span>`);
     updateWalletBars();
+    window.wsSend && window.wsSend({ type:'cashout', gain });
   }
 
   function loop(){
     loopId=requestAnimationFrame(loop);
-    // 同期モードは UI 更新だけ
     $cash.disabled = !(phase==='flight' && joined && !youCashed);
     updateUI();
   }
@@ -141,35 +122,73 @@ export function initGame(){
     const sec = Math.max(0, Math.floor(msLeft / 1000));
     $count.textContent = sec + '秒';
 
-    const lock = msLeft <= 1000;
-    $bet.disabled  = lock || joined;
-    $join.disabled = lock || joined;
-    $lock.style.display = lock ? 'inline-block' : 'none';
+    const lockNow = msLeft <= 1000;
+    $bet.disabled  = lockNow || joined;
+    $join.disabled = lockNow || joined;
+    const lockEl = document.getElementById('lockTip'); if(lockEl){
+      lockEl.style.display = lockNow ? 'inline-block' : 'none';
+    }
   }
 
-  // 入力
+  // ===== 入力（上限撤廃：所持コインまで） =====
+  function parseSafeBet(val){
+    let s = String(val || '').replace(/[^\d]/g,'');
+    if (s === '') s = '0';
+    s = String(parseInt(s,10) || 0);
+    let v = Math.max(0, parseInt(s,10));
+    const c = coinsOf(currentUser());
+    if (v > c) v = c; // 所持コインが上限
+    return v;
+  }
+
+  // 入力イベント
   $join.onclick = joinNow;
   $cash.onclick = cashout;
-  $bet.oninput=()=>{
-    let v=Math.max(1,Math.floor($bet.value||0));
-    v=Math.min(10000,v);
-    const c=coinsOf(currentUser());
-    if(v>c) v=c; $bet.value=v;
+  $bet.oninput = ()=>{
+    $bet.value = String(parseSafeBet($bet.value));
   };
   $betMax.onclick=()=>{
     if(phase==='lobby'){
-      const v=Math.min(10000, coinsOf(currentUser()));
-      $bet.value=v;
+      const v = coinsOf(currentUser()); // 全額
+      $bet.value = String(v);
     }
   };
 
-  resetPassengers(); resetRound(); loop();
+  resetRound(); loop();
 
   return {
     get phase(){ return phase; },
     setServerMult,
     forceCrashAt,
     setServerPhase,
-    setLobbyCountdown
+    setLobbyCountdown,
+    setPassengers: (list)=>renderPassengersList(list), // 別ファイルで既に追加済み想定
   };
+}
+
+// 参加者表示が別にある場合はそちらを使用
+function renderPassengersList(list){
+  const box = document.getElementById('passengers');
+  if (!box) return;
+  box.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'row head';
+  head.innerHTML = `
+    <div class="ava">👥</div>
+    <div class="name">ユーザー</div>
+    <div class="coins">所持金</div>
+    <div class="bet">掛け金</div>
+    <div class="gain">獲得</div>`;
+  box.appendChild(head);
+  list.forEach(p=>{
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      <div class="ava">🧑‍🚀</div>
+      <div class="name">${String(p.name||'？？')}</div>
+      <div class="coins">${p.coins!=null ? Number(p.coins).toLocaleString('ja-JP') : '-'}</div>
+      <div class="bet">${p.joined ? Number(p.bet).toLocaleString('ja-JP') : '-'}</div>
+      <div class="gain">${p.gain>0 ? ('+'+Number(p.gain).toLocaleString('ja-JP')) : ''}</div>`;
+    box.appendChild(row);
+  });
 }

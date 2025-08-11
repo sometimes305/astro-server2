@@ -1,4 +1,4 @@
-// server.js — Expressでpublic配信 + WebSocketでゲーム進行
+// server.js — Expressでpublic配信 + WebSocketでゲーム進行 & 参加者同期
 const http = require('http');
 const path = require('path');
 const express = require('express');
@@ -13,14 +13,33 @@ app.get('/health', (_req, res) => res.status(200).send('ok'));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// ---------------- 状態 ----------------
+// ---------------- ランタイム状態 ----------------
 let phase = 'idle';
 let simMult = 1.0;
 let crashAt = 1.5;
 let lobbyEndAt = 0;
 let lastLobbySec = null;
 
-// ----------- 確率分布（ご指定通り） -----------
+// 接続クライアントの軽量状態
+let nextId = 1;
+const clients = new Map(); // id -> { ws, name, coins, bet, gain, joined, cashed }
+function publicPassengers() {
+  return [...clients.entries()].map(([id, c]) => ({
+    id,
+    name  : c.name  ?? '？？',
+    coins : (typeof c.coins === 'number') ? c.coins : null,
+    bet   : c.bet   | 0,
+    gain  : c.gain  | 0,
+    joined: !!c.joined,
+    cashed: !!c.cashed
+  }));
+}
+function pushPassengers() {
+  const msg = JSON.stringify({ type: 'passengers', list: publicPassengers() });
+  wss.clients.forEach(ws => { if (ws.readyState === ws.OPEN) ws.send(msg); });
+}
+
+// ----------- 倍率の確率分布（ユーザー指定） -----------
 const buckets = [
   { p: 0.05, min: 1.01,     max: 1.01,     mode: 'point' }, // 1.01倍
   { p: 0.05, min: 1.02,     max: 1.10,     mode: 'lin'   }, // 1.02–1.1倍
@@ -31,22 +50,17 @@ const buckets = [
   { p: 0.05, min: 100.00,   max: 10000.00, mode: 'log'   }, // 100–10000倍
   { p: 0.05, min: 10000.00, max: 1e8,      mode: 'log'   }  // 10000–1億倍
 ];
-
-function sampleLinear(min, max) {
-  return min + Math.random() * (max - min);
+function sampleLinear(min, max){ return min + Math.random()*(max-min); }
+function sampleLogUniform(min, max){
+  const a=Math.log(min), b=Math.log(max);
+  return Math.exp(a + Math.random()*(b-a));
 }
-function sampleLogUniform(min, max) {
-  const a = Math.log(min), b = Math.log(max);
-  return Math.exp(a + Math.random() * (b - a));
-}
-function sampleCrash() {
-  let u = Math.random();
-  for (const b of buckets) {
-    if (u < b.p) {
-      if (b.mode === 'point') return b.min;
-      const v = (b.mode === 'log')
-        ? sampleLogUniform(b.min, b.max)
-        : sampleLinear(b.min, b.max);
+function sampleCrash(){
+  let u=Math.random();
+  for(const b of buckets){
+    if(u < b.p){
+      if(b.mode==='point') return b.min;
+      const v = (b.mode==='log') ? sampleLogUniform(b.min,b.max) : sampleLinear(b.min,b.max);
       return Math.min(v, 1e8);
     }
     u -= b.p;
@@ -66,10 +80,7 @@ const stages = [
   { t: 1e6, r: 2.60 },
   { t: 1e8, r: 3.00 }
 ];
-const rateFor = (m) => {
-  for (const s of stages) if (m < s.t) return s.r;
-  return stages.at(-1).r;
-};
+const rateFor = (m)=>{ for(const s of stages){ if(m < s.t) return s.r; } return stages.at(-1).r; };
 
 // ----------- ブロードキャスト -----------
 const broadcast = (obj) => {
@@ -77,79 +88,97 @@ const broadcast = (obj) => {
   wss.clients.forEach(ws => { if (ws.readyState === ws.OPEN) ws.send(msg); });
 };
 
-// ----------- 接続時の初期通知 -----------
+// ----------- 接続時の処理 -----------
 wss.on('connection', (ws) => {
+  const id = String(nextId++);
+  clients.set(id, { ws, name: null, coins: null, bet:0, gain:0, joined:false, cashed:false });
+
+  // 初期通知
   ws.send(JSON.stringify({
     type: 'init',
     phase,
     crashAt,
     lobbyMsLeft: phase === 'lobby' ? Math.max(0, lobbyEndAt - Date.now()) : undefined
   }));
+  pushPassengers();
+
+  ws.on('message', (raw)=>{
+    let msg; try{ msg = JSON.parse(raw); } catch { return; }
+    const c = clients.get(id); if(!c) return;
+
+    if(msg.type==='hello'){
+      c.name  = String(msg.name || '？？');
+      if(typeof msg.coins==='number') c.coins = msg.coins|0;
+      pushPassengers();
+    }
+    if(msg.type==='wallet' && typeof msg.coins==='number'){
+      c.coins = msg.coins|0; pushPassengers();
+    }
+    if(msg.type==='join' && typeof msg.bet==='number'){
+      c.bet = msg.bet|0; c.joined = true; pushPassengers();
+    }
+    if(msg.type==='cashout' && typeof msg.gain==='number'){
+      c.gain = msg.gain|0; c.cashed = true; pushPassengers();
+    }
+  });
+
+  ws.on('close', ()=>{ clients.delete(id); pushPassengers(); });
 });
 
 // ----------- ラウンド制御 -----------
-function startLobby() {
+function startLobby(){
   phase = 'lobby';
   simMult = 1.0;
-  lobbyEndAt = Date.now() + 15000;      // 15秒受付
+  // ラウンド毎の値を初期化
+  clients.forEach(c=>{ c.bet=0; c.gain=0; c.joined=false; c.cashed=false; });
+  pushPassengers();
+
+  lobbyEndAt = Date.now() + 15000; // 15秒受付
   lastLobbySec = null;
-
-  // ★ 受付開始を即通知（クライアントが“搭乗受付中”になり、秒表示が走る）
-  broadcast({ type: 'round', phase, lobbyMsLeft: 15000 });
-
-  // ★ setTimeout は使わない（メインループで msLeft<=0 を検知して発射）
-  // setTimeout(startFlight, 15000); ←削除
+  broadcast({ type:'round', phase, lobbyMsLeft: 15000 }); // 受付開始を即通知
 }
 
-function startFlight() {
-  // 二重発射ガード
-  if (phase === 'flight') return;
-
+function startFlight(){
+  if(phase==='flight') return; // 二重発射ガード
   phase = 'flight';
   simMult = 1.0;
   crashAt = sampleCrash();
-  broadcast({ type: 'round', phase, crashAt });
+  broadcast({ type:'round', phase, crashAt });
 }
 
-function endCrash() {
+function endCrash(){
   phase = 'crash';
-  broadcast({ type: 'round', phase, crashAt });
-  setTimeout(startLobby, 5000);         // 5秒休憩後に次の受付
+  broadcast({ type:'round', phase, crashAt });
+  setTimeout(startLobby, 5000); // 5秒休憩
 }
 
 // ----------- メインループ -----------
-setInterval(() => {
-  if (phase === 'lobby') {
+setInterval(()=>{
+  if(phase==='lobby'){
     const msLeft = Math.max(0, lobbyEndAt - Date.now());
-
-    // 0 までしっかり配信（毎秒）
-    const sec = Math.floor(msLeft / 1000);
-    if (sec !== lastLobbySec) {
+    const sec = Math.floor(msLeft/1000);
+    if(sec !== lastLobbySec){
       lastLobbySec = sec;
-      broadcast({ type: 'lobby', msLeft });
+      broadcast({ type:'lobby', msLeft });
     }
-
-    // 0 になったらこのtickで発射
-    if (msLeft <= 0) startFlight();
+    if(msLeft <= 0) startFlight();
     return;
   }
-
-  if (phase === 'flight') {
-    const dt = 0.1; // 100ms
+  if(phase==='flight'){
+    const dt = 0.1;
     simMult *= Math.pow(rateFor(simMult), dt);
-
-    if (simMult >= crashAt) {
+    if(simMult >= crashAt){
       simMult = crashAt;
-      broadcast({ type: 'mult', value: simMult });
+      broadcast({ type:'mult', value: simMult });
       endCrash();
-    } else {
-      broadcast({ type: 'mult', value: simMult });
+    }else{
+      broadcast({ type:'mult', value: simMult });
     }
   }
 }, 100);
 
 // ----------- 起動 -----------
-server.listen(PORT, () => {
+server.listen(PORT, ()=> {
   console.log(`listening on :${PORT}`);
   startLobby();
 });

@@ -1,75 +1,36 @@
-// public/ads.js
-import { $, currentUser, coinsOf, setCoins } from './auth.js';
-
-export function initAds(){
-  const watchBtn = $('watchAdBtn');
-  const modal = $('adModal');
-  const adCount = $('adCount');
-  const adBar = $('adBar');
-  const adSlot = $('adSlot');
-  const adClaim = $('adClaim');
-  const adClose = $('adClose');
-
-  let timer = null, left = 10;
-
-  // ---- 同じタブで遷移するバナー（target 付けない）
-  // 必要に応じてバナーの種類を差し替えてOK
+// public/ads.js — スマホ対策：画像が出なくても確実にCTAを表示（非モジュール版）
+(function () {
   const HAPPYM_URL = 'https://is.gd/pcTwWJ';
   const banners = [
-    `<a href="https://appollo.jp/api/lp/?acd=WYuaeKhMfyyHEoOsviFTUQ&title=">
-       <img src="https://appollo.jp/api/bn/?acd=WYuaeKhMfyyHEoOsviFTUQ&banner_type=1&device_type=0" alt="AD">
-     </a>`,
-    `<a href="https://appollo.jp/api/lp/?acd=WYuaeKhMfyyHEoOsviFTUQ&title=">
-       <img src="https://appollo.jp/api/bn/?acd=WYuaeKhMfyyHEoOsviFTUQ&banner_type=2&device_type=0" alt="AD">
-     </a>`,
-    `<a href="https://appollo.jp/api/lp/?acd=WYuaeKhMfyyHEoOsviFTUQ&title=">
-       <img src="https://appollo.jp/api/bn/?acd=WYuaeKhMfyyHEoOsviFTUQ&banner_type=3&device_type=0" alt="AD">
-     </a>`,
-    // 予備：ハッピーメール直リンク（画像は無し／テキスト）
-    `<a href="${HAPPYM_URL}" style="display:inline-block;padding:8px 12px;border:1px solid #888;border-radius:8px">おすすめ案件を見る</a>`
+    'https://appollo.jp/api/bn/?acd=WYuaeKhMfyyHEoOsviFTUQ&banner_type=1&device_type=0',
+    'https://appollo.jp/api/bn/?acd=WYuaeKhMfyyHEoOsviFTUQ&banner_type=2&device_type=0',
+    'https://appollo.jp/api/bn/?acd=WYuaeKhMfyyHEoOsviFTUQ&banner_type=3&device_type=0',
   ];
 
-  const openAd = ()=>{
-    // 新規タブは開かない：モーダル内にバナーをそのまま表示
-    const pick = Math.floor(Math.random()*banners.length);
-    adSlot.innerHTML = banners[pick];
+  // グローバル公開（onclickから呼べる）
+  window.renderAdSlot = function renderAdSlot() {
+    const slot = document.getElementById('adSlot');
+    if (!slot) return;
 
-    left = 10;
-    adCount.textContent = String(left);
-    adBar.style.width = '0%';
-    adClaim.disabled = true;
-    modal.style.display = 'grid';
+    const pick = banners[(Math.random() * banners.length) | 0];
 
-    timer = setInterval(()=>{
-      left--;
-      adCount.textContent = String(left);
-      adBar.style.width = (100*(10-left)/10)+'%';
-      if (left <= 0) {
-        clearInterval(timer); timer=null;
-        adClaim.disabled = false;
-      }
-    }, 1000);
+    const fallbackBtnHtml = `<a href="${HAPPYM_URL}" class="ad-cta">案件ページをひらく</a>`;
+    // onerror 内に埋め込むので " と ' をエスケープ
+    const fallbackEscaped = fallbackBtnHtml
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    slot.innerHTML = `
+      <a href="https://appollo.jp/api/lp/?acd=WYuaeKhMfyyHEoOsviFTUQ&title=">
+        <img src="${pick}" alt="AD" style="max-width:100%;height:auto;display:block;margin:auto"
+          onerror="this.parentElement.outerHTML='${fallbackEscaped}'">
+      </a>
+      <div style="margin-top:8px;text-align:center">
+        <a href="${HAPPYM_URL}" class="ad-cta small">うまく表示されない場合はこちら</a>
+      </div>
+    `;
   };
-
-  const closeAd = ()=>{
-    modal.style.display = 'none';
-    if (timer) { clearInterval(timer); timer=null; }
-  };
-
-  watchBtn.onclick = ()=>{
-    const u = currentUser();
-    if (!u) { alert('先にログインしてください'); return; }
-    if (coinsOf(u) > 0) { alert('所持が0のときだけ視聴できます'); return; }
-    openAd();
-  };
-
-  adClaim.onclick = ()=>{
-    const u = currentUser(); if (!u) return;
-    setCoins(u, coinsOf(u) + 10);
-    closeAd();
-    alert('+10 付与しました');
-  };
-
-  adClose.onclick = closeAd;
-  modal.addEventListener('click', (e)=>{ if(e.target===modal) closeAd(); });
-}
+})();

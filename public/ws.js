@@ -1,41 +1,45 @@
-export function connectWS(game) {
-  const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
-  let ws, retry = 0;
+// public/ws.js — WebSocket 接続とメッセージ受信
+import { currentUser, coinsOf } from './auth.js';
 
-  const openWS = () => {
-    ws = new WebSocket(WS_URL);
+export function connectWS(game){
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  const ws = new WebSocket(url);
 
-    ws.addEventListener('open', () => { console.log('WS connected'); retry = 0; });
+  ws.addEventListener('open', ()=>{
+    const name  = currentUser() || 'ゲスト';
+    const coins = Number(coinsOf(name) || 0);
+    ws.send(JSON.stringify({ type:'hello', name, coins }));
+  });
 
-    ws.addEventListener('message', (e) => {
-      const msg = JSON.parse(e.data);
+  ws.addEventListener('message', (e)=>{
+    let msg; try{ msg = JSON.parse(e.data); }catch{ return; }
 
-      if (msg.type === 'init') {
-        if (typeof msg.crashAt === 'number') game.forceCrashAt?.(msg.crashAt);
-        if (msg.phase) game.setServerPhase?.(msg.phase);
-        if (typeof msg.lobbyMsLeft === 'number') game.setLobbyCountdown?.(msg.lobbyMsLeft);
-      }
+    if (msg.type === 'init') {
+      if (msg.phase) game.setServerPhase(msg.phase);
+      if (typeof msg.crashAt === 'number') game.forceCrashAt(msg.crashAt);
+      if (typeof msg.lobbyMsLeft === 'number') game.setLobbyCountdown(msg.lobbyMsLeft);
+      return;
+    }
+    if (msg.type === 'lobby' && typeof msg.msLeft === 'number') {
+      game.setLobbyCountdown(msg.msLeft); return;
+    }
+    if (msg.type === 'round' && msg.phase) {
+      game.setServerPhase(msg.phase);
+      if (typeof msg.crashAt === 'number') game.forceCrashAt(msg.crashAt);
+      return;
+    }
+    if (msg.type === 'mult' && typeof msg.value === 'number') {
+      game.setServerMult(msg.value); return;
+    }
+    if (msg.type === 'passengers' && Array.isArray(msg.list)) {
+      game.setPassengers(msg.list); return;
+    }
+  });
 
-      if (msg.type === 'round') {
-        if (typeof msg.crashAt === 'number') game.forceCrashAt?.(msg.crashAt);
-        if (msg.phase) game.setServerPhase?.(msg.phase);
-        if (typeof msg.lobbyMsLeft === 'number') game.setLobbyCountdown?.(msg.lobbyMsLeft);
-      }
-
-      if (msg.type === 'lobby' && typeof msg.msLeft === 'number') {
-        game.setLobbyCountdown?.(msg.msLeft);
-      }
-
-      if (msg.type === 'mult' && typeof msg.value === 'number') {
-        game.setServerMult?.(msg.value);
-      }
-    });
-
-    ws.addEventListener('close', () => {
-      if (retry < 5) setTimeout(openWS, Math.min(1000 * 2 ** retry++, 8000));
-    });
-    ws.addEventListener('error', () => { try { ws.close(); } catch {} });
+  // ゲーム側から送るためのヘルパ
+  window.wsSend = (obj)=>{
+    if(ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify(obj));
+    }
   };
-
-  openWS();
 }

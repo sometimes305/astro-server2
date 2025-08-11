@@ -6,6 +6,7 @@
   <title>宇宙へ！</title>
   <link rel="stylesheet" href="/app.css">
   <script type="module" src="/main.js"></script>
+  <script src="/ads.js" defer></script>
 </head>
 <body>
   <div class="app">
@@ -41,13 +42,16 @@
       </div>
 
       <div class="buttons">
-  <button id="joinBtn" class="primary" disabled>宇宙へ！</button>
-  <button id="cashoutBtn" class="good" disabled>帰還する</button>
-</div>
+        <button id="joinBtn" class="primary" disabled>宇宙へ！</button>
+        <button id="cashoutBtn" class="good" disabled>帰還する</button>
+      </div>
 
       <div class="bet">
-        <label>投入コイン: <input id="bet" type="number" min="1" max="10000" step="1" value="10"></label>
-        <button id="betMax">MAX(10,000)</button>
+        <label>投入コイン:
+          <!-- ★スマホ編集しやすい numeric テキスト -->
+          <input id="bet" type="text" inputmode="numeric" pattern="[0-9]*" value="10">
+        </label>
+        <button id="betMax">MAX</button>
         <span id="lockTip" class="tag no" style="display:none">直前の変更は無効の可能性</span>
       </div>
 
@@ -64,52 +68,48 @@
       <h3>💰 ウォレット</h3>
       <div style="display:flex;gap:8px;align-items:center;">
         <div>あなたの星粒：<b id="wallet">0</b></div>
-        <button id="watchAdBtn" class="good" style="margin-left:auto;">広告を見る(+10)</button>
+        <button id="watchAdBtn" class="good" style="margin-left:auto;" onclick="renderAdSlot()">広告を見る(+10)</button>
       </div>
       <small style="opacity:.8">※ユーザーごとに端末保存（localStorage）。</small>
     </section>
   </div>
 
-  <!-- 広告モーダル -->
+  <!-- 広告モーダル（例。既存のものを使ってOK） -->
   <div class="modal" id="adModal">
     <div class="box">
       <h3>広告を見てコインGET</h3>
       <div id="adSlot" style="margin:10px 0;"></div>
       <div class="bar"><i id="adBar"></i></div>
       <p id="adCount">10</p>
-      <p style="font-size:12px;opacity:.8">※新規タブで開きます。戻ってもカウント継続。</p>
+      <p style="font-size:12px;opacity:.8">※同タブで開きます。</p>
       <button id="adClaim" class="primary" disabled>+10 受け取る</button>
-      <div style="text-align:right;margin-top:8px;">
-        <button id="adClose" class="small">閉じる</button>
-      </div>
     </div>
   </div>
-
-  <!-- 履歴モーダル -->
-  <div class="modal" id="histModal">
-    <div class="box">
-      <div class="historyHead">
-        <h3 style="margin:0;">搭乗記録</h3>
-        <button id="histClose" class="small">閉じる</button>
-      </div>
-      <div style="opacity:.8;margin-bottom:8px;font-size:12px;">過去20回の最終倍率</div>
-      <div id="histGrid" class="grid"></div>
-    </div>
-  </div>
-
   <!-- ユーザーモーダル -->
-  <div class="modal" id="authModal">
-    <div class="box">
-      <h3>ログイン / 新規登録</h3>
-      <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
-        <input id="uName" type="text" placeholder="ユーザー名" />
-        <input id="uPass" type="password" placeholder="パスワード" />
-        <div style="display:flex;gap:8px;">
-          <button id="loginBtn" class="primary">ログイン</button>
-          <button id="signupBtn" class="good">新規登録</button>
-        </div>
+<div class="modal" id="authModal" style="display:none;">
+  <div class="box">
+    <h3>ログイン / 新規登録</h3>
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
+      <input id="uName" type="text" placeholder="ユーザー名" />
+      <input id="uPass" type="password" placeholder="パスワード" />
+      <div style="display:flex;gap:8px;">
+        <button id="loginBtn" class="primary">ログイン</button>
+        <button id="signupBtn" class="good">新規登録</button>
       </div>
     </div>
   </div>
+</div>
+<!-- 履歴モーダル -->
+<div class="modal" id="histModal" style="display:none;">
+  <div class="box">
+    <div class="historyHead">
+      <h3 style="margin:0;">搭乗記録</h3>
+      <button id="histClose" class="small">閉じる</button>
+    </div>
+    <div style="opacity:.8;margin-bottom:8px;font-size:12px;">過去20回の最終倍率</div>
+    <div id="histGrid" class="grid"></div>
+  </div>
+</div>
+
 </body>
 </html>
