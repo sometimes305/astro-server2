@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>宇宙へ！</title>
-  <link rel="stylesheet" href="./css/app.css">
+  <link rel="stylesheet" href="/app.css">
+  <script type="module" src="/main.js"></script>
 </head>
 <body>
   <div class="app">
@@ -40,10 +41,9 @@
       </div>
 
       <div class="buttons">
-        <button id="joinBtn" class="primary" disabled>自動で受付開始中…</button>
-        <button id="cashoutBtn" class="good" disabled>地球へ帰還</button>
-        <button id="newRoundBtn" class="danger" disabled>新しいラウンド</button>
-      </div>
+  <button id="joinBtn" class="primary" disabled>宇宙へ！</button>
+  <button id="cashoutBtn" class="good" disabled>帰還する</button>
+</div>
 
       <div class="bet">
         <label>投入コイン: <input id="bet" type="number" min="1" max="10000" step="1" value="10"></label>
@@ -79,6 +79,9 @@
       <p id="adCount">10</p>
       <p style="font-size:12px;opacity:.8">※新規タブで開きます。戻ってもカウント継続。</p>
       <button id="adClaim" class="primary" disabled>+10 受け取る</button>
+      <div style="text-align:right;margin-top:8px;">
+        <button id="adClose" class="small">閉じる</button>
+      </div>
     </div>
   </div>
 
@@ -108,7 +111,5 @@
       </div>
     </div>
   </div>
-
-  <script type="module" src="./js/main.js"></script>
 </body>
 </html>
