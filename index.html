@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>宇宙へ！</title>
+  <link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="left">
+        <div class="title">🚀 <b>宇宙へ！</b></div>
+        <div class="balance">星粒: <b id="balance">0</b></div>
+      </div>
+      <div class="toolbar">
+        <button id="historyBtn" class="small">履歴</button>
+        <span id="userArea"></span>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="hud">
+        <div class="count">状態: <b id="stateLabel">待機中</b></div>
+        <div class="mult"><span class="x" id="mult">1.00×</span></div>
+        <div class="count">搭乗まで: <b id="countdown">--</b></div>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="stars" id="stars"></div>
+        <div class="rocket" id="rocket" title="ロケット">
+          <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#34d1ff"/><stop offset="1" stop-color="#1fb6ea"/></linearGradient></defs>
+            <path d="M50 8 L72 54 L50 92 L28 54 Z" fill="url(#g)" stroke="white" stroke-opacity=".35" stroke-width="2"/>
+            <circle cx="50" cy="48" r="10" fill="#fff" fill-opacity=".9"/>
+          </svg>
+          <div class="flame"></div>
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button id="joinBtn" class="primary" disabled>自動で受付開始中…</button>
+        <button id="cashoutBtn" class="good" disabled>地球へ帰還</button>
+        <button id="newRoundBtn" class="danger" disabled>新しいラウンド</button>
+      </div>
+
+      <div class="bet">
+        <label>投入コイン: <input id="bet" type="number" min="1" max="10000" step="1" value="10"></label>
+        <button id="betMax">MAX(10,000)</button>
+        <span id="lockTip" class="tag no" style="display:none">直前の変更は無効の可能性</span>
+      </div>
+
+      <p class="tip">所持が0の時だけ<b>広告を見る</b>で+10。履歴ボタンで過去20回の最終倍率。</p>
+      <div class="log" id="log" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+      <h3>👥 搭乗者</h3>
+      <div class="list" id="passengers"></div>
+    </section>
+
+    <section class="panel" id="walletPanel">
+      <h3>💰 ウォレット</h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div>あなたの星粒：<b id="wallet">0</b></div>
+        <button id="watchAdBtn" class="good" style="margin-left:auto;">広告を見る(+10)</button>
+      </div>
+      <small style="opacity:.8">※ユーザーごとに端末保存（localStorage）。</small>
+    </section>
+  </div>
+
+  <!-- 広告モーダル -->
+  <div class="modal" id="adModal">
+    <div class="box">
+      <h3>広告を見てコインGET</h3>
+      <div id="adSlot" style="margin:10px 0;"></div>
+      <div class="bar"><i id="adBar"></i></div>
+      <p id="adCount">10</p>
+      <p style="font-size:12px;opacity:.8">※新規タブで開きます。戻ってもカウント継続。</p>
+      <button id="adClaim" class="primary" disabled>+10 受け取る</button>
+    </div>
+  </div>
+
+  <!-- 履歴モーダル -->
+  <div class="modal" id="histModal">
+    <div class="box">
+      <div class="historyHead">
+        <h3 style="margin:0;">搭乗記録</h3>
+        <button id="histClose" class="small">閉じる</button>
+      </div>
+      <div style="opacity:.8;margin-bottom:8px;font-size:12px;">過去20回の最終倍率</div>
+      <div id="histGrid" class="grid"></div>
+    </div>
+  </div>
+
+  <!-- ユーザーモーダル -->
+  <div class="modal" id="authModal">
+    <div class="box">
+      <h3>ログイン / 新規登録</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
+        <input id="uName" type="text" placeholder="ユーザー名" />
+        <input id="uPass" type="password" placeholder="パスワード" />
+        <div style="display:flex;gap:8px;">
+          <button id="loginBtn" class="primary">ログイン</button>
+          <button id="signupBtn" class="good">新規登録</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
